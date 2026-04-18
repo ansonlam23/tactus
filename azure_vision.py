@@ -118,17 +118,15 @@ def read_image(image_bytes: bytes) -> dict:
     data = _call_azure(image_bytes, features="read")
 
     read_result = data.get("readResult", {})
-    full_text: str = read_result.get("content", "")
 
     lines: list[str] = []
-    for page in read_result.get("pages", []):
-        for line in page.get("lines", []):
-            content = line.get("content", "").strip()
+    for block in read_result.get("blocks", []):
+        for line in block.get("lines", []):
+            content = line.get("text", "").strip()
             if content:
                 lines.append(content)
 
-    if not full_text and lines:
-        full_text = "\n".join(lines)
+    full_text = "\n".join(lines)
 
     if not full_text:
         raise RuntimeError("Azure returned no text for this image.")
