@@ -77,23 +77,34 @@ def _call_azure(image_bytes: bytes, features: str) -> dict:
 
 def describe_image(image_bytes: bytes) -> dict:
     """
-    Return a short natural-language caption for the image.
+    Return tags and detected objects for the image.
 
     Returns:
-        {"caption": str, "confidence": float}
+        {"caption": str, "tags": list[str], "objects": list[str]}
     """
-    logger.info("Calling Azure Vision API (feature: caption)...")
-    data = _call_azure(image_bytes, features="caption")
+    logger.info("Calling Azure Vision API (features: tags,objects)...")
+    data = _call_azure(image_bytes, features="tags,objects")
 
-    caption_result = data.get("captionResult", {})
-    caption = caption_result.get("text", "")
-    confidence = round(caption_result.get("confidence", 0.0), 4)
+    tags = [
+        t["name"]
+        for t in data.get("tagsResult", {}).get("values", [])
+        if t.get("confidence", 0) >= 0.7
+    ]
+
+    objects = [
+        o["tags"][0]["name"]
+        for o in data.get("objectsResult", {}).get("values", [])
+        if o.get("tags") and o["tags"][0].get("confidence", 0) >= 0.7
+    ]
+
+    combined = list(dict.fromkeys(objects + tags))  # objects first, deduped
+    caption = ", ".join(combined) if combined else ""
 
     if not caption:
-        raise RuntimeError("Azure returned no caption for this image.")
+        raise RuntimeError("Azure returned no tags or objects for this image.")
 
-    logger.info("Caption: '%s' (confidence: %.2f)", caption, confidence)
-    return {"caption": caption, "confidence": confidence}
+    logger.info("Describe result: '%s'", caption)
+    return {"caption": caption, "tags": tags, "objects": objects}
 
 
 def read_image(image_bytes: bytes) -> dict:
