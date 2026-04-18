@@ -14,8 +14,9 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
-from azure_vision import describe_image, read_image
-from config import UPLOAD_DIR
+import azure_vision
+import local_vision
+from config import UPLOAD_DIR, VISION_BACKEND
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -127,10 +128,13 @@ async def process_image(
         # Non-fatal — log and continue processing
         logger.warning("Could not save debug image: %s", exc)
 
-    # --- Run computer vision ---
+    # --- Route to correct CV backend ---
+    backend = azure_vision if VISION_BACKEND == "azure" else local_vision
+    logger.info("Using CV backend: %s", VISION_BACKEND)
+
     try:
         if mode == "describe":
-            result = describe_image(image_bytes)
+            result = backend.describe_image(image_bytes)
             return {
                 "success": True,
                 "mode": mode,
@@ -142,7 +146,7 @@ async def process_image(
             }
 
         else:  # mode == "read"
-            result = read_image(image_bytes)
+            result = backend.read_image(image_bytes)
             return {
                 "success": True,
                 "mode": mode,
