@@ -20,9 +20,9 @@ import requests
 # Constants
 # ---------------------------------------------------------------------------
 
-CAMERA_URL = "http://192.168.4.1/capture"
+CAMERA_URL = "http://192.168.4.1/"
 BACKEND_URL = "http://127.0.0.1:8000/process-image"
-MODE = "read"  # "read" or "describe"
+MODE = "describe"  # "read" or "describe"
 
 CAPTURED_FRAMES_DIR = Path("captured_frames")
 
@@ -78,23 +78,38 @@ def capture_frame_opencv(
     raise RuntimeError(f"No valid frame received after {max_attempts} attempts.")
 
 
-def capture_frame_requests(camera_url: str, timeout: int = 10) -> bytes:
+def capture_frame_requests(camera_url: str, timeout: int = 30) -> bytes:
     """
-    Fallback: fetch a single JPEG directly from the /capture endpoint.
+    Fallback: parse a single JPEG frame out of the MJPEG stream.
+    Scans the byte stream for JPEG start (\\xff\\xd8) and end (\\xff\\xd9) markers.
     Returns raw JPEG bytes.
     """
-    log("OpenCV unavailable — falling back to requests GET...")
-    log(f"Connecting to {camera_url}...")
+    log("OpenCV unavailable — falling back to requests-based MJPEG parser...")
+    log(f"Connecting to {camera_url} (streaming mode)...")
 
-    response = requests.get(camera_url, timeout=timeout)
+    response = requests.get(camera_url, stream=True, timeout=timeout)
     response.raise_for_status()
 
-    image_bytes = response.content
-    if not image_bytes:
-        raise RuntimeError("Camera returned an empty response.")
+    log("Waiting for JPEG frame in stream...")
 
-    log(f"Frame received via requests ({len(image_bytes):,} bytes)")
-    return image_bytes
+    buffer = b""
+    start_marker = b"\xff\xd8"
+    end_marker = b"\xff\xd9"
+
+    for chunk in response.iter_content(chunk_size=1024):
+        if not chunk:
+            continue
+        buffer += chunk
+
+        start = buffer.find(start_marker)
+        end = buffer.find(end_marker)
+
+        if start != -1 and end != -1 and end > start:
+            image_bytes = buffer[start : end + 2]
+            log(f"Frame received via requests parser ({len(image_bytes):,} bytes)")
+            return image_bytes
+
+    raise RuntimeError("Stream ended without a complete JPEG frame.")
 
 
 # ---------------------------------------------------------------------------
