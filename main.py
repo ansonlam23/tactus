@@ -150,6 +150,7 @@ async def process_image(
                 "caption": "",
                 "text": result.get("text", ""),
                 "lines": result.get("lines", []),
+                "guidance": result.get("guidance"),
                 "error": None,
             }
 

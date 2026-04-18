@@ -6,6 +6,7 @@ All calls are synchronous — no polling required with the v4.0 endpoint.
 """
 
 import logging
+from typing import Optional
 
 import requests
 
@@ -107,12 +108,52 @@ def describe_image(image_bytes: bytes) -> dict:
     return {"caption": caption, "tags": tags, "objects": objects}
 
 
+def _check_framing(data: dict) -> Optional[str]:
+    """Return a camera guidance string if framing is off, otherwise None."""
+    width = data.get("metadata", {}).get("width", 0)
+    if not width:
+        return None
+
+    all_lines = []
+    for block in data.get("readResult", {}).get("blocks", []):
+        all_lines.extend(block.get("lines", []))
+
+    if not all_lines:
+        return None
+
+    cutoff_margin = width * 0.01  # truly touching the edge
+    center_xs = []
+
+    for line in all_lines:
+        poly = line.get("boundingPolygon", [])
+        if not poly:
+            continue
+        xs = [p["x"] for p in poly]
+        min_x, max_x = min(xs), max(xs)
+        center_xs.append((min_x + max_x) / 2)
+
+        if min_x < cutoff_margin or max_x > width - cutoff_margin:
+            return "Text is cut off — back away or reframe the camera."
+
+        if (max_x - min_x) > width * 0.75:
+            return "Too close — back the camera away."
+
+    if center_xs:
+        ratio = (sum(center_xs) / len(center_xs)) / width
+        if ratio < 0.35:
+            return "Text is off to the left — move the camera right."
+        if ratio > 0.65:
+            return "Text is off to the right — move the camera left."
+
+    return None
+
+
 def read_image(image_bytes: bytes) -> dict:
     """
     Extract all text from the image using OCR.
 
     Returns:
-        {"text": str, "lines": list[str]}
+        {"text": str, "lines": list[str], "guidance": str | None}
     """
     logger.info("Calling Azure Vision API (feature: read)...")
     data = _call_azure(image_bytes, features="read")
@@ -131,5 +172,9 @@ def read_image(image_bytes: bytes) -> dict:
     if not full_text:
         raise RuntimeError("Azure returned no text for this image.")
 
+    guidance = _check_framing(data)
+    if guidance:
+        logger.info("Framing guidance: %s", guidance)
+
     logger.info("OCR extracted %d lines", len(lines))
-    return {"text": full_text, "lines": lines}
+    return {"text": full_text, "lines": lines, "guidance": guidance}
