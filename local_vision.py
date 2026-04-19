@@ -80,8 +80,18 @@ def read_image(image_bytes: bytes) -> dict:
     """
     logger.info("Running Tesseract OCR on image (%d bytes)...", len(image_bytes))
 
-    image = Image.open(io.BytesIO(image_bytes))
-    raw_text = pytesseract.image_to_string(image)
+    image = Image.open(io.BytesIO(image_bytes)).convert("L")
+
+    # Auto-detect and correct rotation
+    try:
+        osd = pytesseract.image_to_osd(image, output_type=pytesseract.Output.DICT)
+        angle = osd.get("rotate", 0)
+        if angle:
+            image = image.rotate(angle, expand=True)
+    except Exception:
+        pass
+
+    raw_text = pytesseract.image_to_string(image, config="--psm 3")
 
     lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
 

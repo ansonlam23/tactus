@@ -8,7 +8,6 @@ Run:
     python camera_bridge.py
 """
 
-import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -161,8 +160,6 @@ def upload_to_backend(image_bytes: bytes, backend_url: str, mode: str) -> dict:
 def print_result(result: dict) -> None:
     log("Parsed JSON response:")
     print()
-    print(json.dumps(result, indent=2))
-    print()
 
     if not result.get("success"):
         print("=" * 50)
@@ -177,23 +174,34 @@ def print_result(result: dict) -> None:
         print(f"  {result['guidance']}")
         print()
 
-    text = result.get("text", "").strip()
-    if text:
-        print("OCR TEXT:")
-        print(f"  {text}")
-        print()
-
-    lines = result.get("lines", [])
-    if lines:
-        print("LINES:")
-        for i, line in enumerate(lines, 1):
-            print(f"  {i}. {line}")
-        print()
-
     caption = result.get("caption", "").strip()
     if caption:
         print("CAPTION:")
         print(f"  {caption}")
+        print()
+
+    text = result.get("text", "").strip()
+    lines = result.get("lines", [])
+    if lines:
+        print("OCR TEXT:")
+        for i, line in enumerate(lines, 1):
+            print(f"  {i}. {line}")
+        print()
+    elif text:
+        print("OCR TEXT:")
+        print(f"  {text}")
+        print()
+
+    braille_debug = result.get("braille_debug", [])
+    braille_payload = result.get("braille_payload", "")
+    if braille_debug:
+        print("BRAILLE TRANSLATION:")
+        for entry in braille_debug:
+            print(f"  {entry}")
+        print()
+    if braille_payload:
+        print("PAYLOAD TO ESP32:")
+        print(f"  {braille_payload}")
         print()
 
     print("=" * 50)

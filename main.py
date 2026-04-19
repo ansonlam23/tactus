@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 import azure_vision
 import local_vision
+from braille_translator import translate_to_braille
 from config import UPLOAD_DIR, VISION_BACKEND
 
 # ---------------------------------------------------------------------------
@@ -135,26 +136,34 @@ async def process_image(
     try:
         if mode == "describe":
             result = backend.describe_image(image_bytes)
+            caption = result.get("caption", "")
+            braille = translate_to_braille(caption)
             return {
                 "success": True,
                 "mode": mode,
                 "filename": save_filename,
-                "caption": result.get("caption", ""),
-                "text": result.get("caption", ""),  # convenience alias
+                "caption": caption,
+                "text": caption,
                 "lines": [],
+                "braille_payload": braille["payload"],
+                "braille_debug": braille["debug_log"],
                 "error": None,
             }
 
         else:  # mode == "read"
             result = backend.read_image(image_bytes)
+            text = result.get("text", "")
+            braille = translate_to_braille(text)
             return {
                 "success": True,
                 "mode": mode,
                 "filename": save_filename,
                 "caption": "",
-                "text": result.get("text", ""),
+                "text": text,
                 "lines": result.get("lines", []),
                 "guidance": result.get("guidance"),
+                "braille_payload": braille["payload"],
+                "braille_debug": braille["debug_log"],
                 "error": None,
             }
 
@@ -185,5 +194,7 @@ def _error_response(mode: str, filename: str, error: str) -> dict:
         "caption": "",
         "text": "",
         "lines": [],
+        "braille_payload": "",
+        "braille_debug": [],
         "error": error,
     }
