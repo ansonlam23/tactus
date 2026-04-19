@@ -19,9 +19,10 @@ import requests
 # Constants
 # ---------------------------------------------------------------------------
 
-CAMERA_URL = "http://192.168.4.1/"
-BACKEND_URL = "http://127.0.0.1:8000/process-image"
-MODE = "describe"  # "read" or "describe"
+CAMERA_URL   = "http://192.168.4.1/"
+BRAILLE_URL  = "http://192.168.4.1/braille"
+BACKEND_URL  = "http://127.0.0.1:8000/process-image"
+MODE         = "describe"  # "read" or "describe"
 
 CAPTURED_FRAMES_DIR = Path("captured_frames")
 
@@ -153,6 +154,30 @@ def upload_to_backend(image_bytes: bytes, backend_url: str, mode: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# ESP32 Braille sender
+# ---------------------------------------------------------------------------
+
+
+def send_to_esp32(payload: str, braille_url: str) -> None:
+    """POST the comma-separated Braille payload back to the ESP32-CAM."""
+    log(f"Sending payload back to ESP32-CAM at {braille_url}...")
+    try:
+        response = requests.post(
+            braille_url,
+            data=payload,
+            headers={"Content-Type": "text/plain"},
+            timeout=5,
+        )
+        log(f"ESP32 received it! Response: {response.text.strip()}")
+    except requests.exceptions.Timeout:
+        print("    Warning: ESP32 did not respond in time (timeout after 5s).")
+    except requests.exceptions.ConnectionError:
+        print("    Warning: Could not reach ESP32 — may have dropped off the network.")
+    except Exception as e:
+        print(f"    Warning: ESP32 send failed — {e}")
+
+
+# ---------------------------------------------------------------------------
 # Output printer
 # ---------------------------------------------------------------------------
 
@@ -253,6 +278,13 @@ def main() -> None:
     except Exception as e:
         print(f"\nFATAL: Backend upload failed — {e}")
         return
+
+    # Step 8-9: Forward Braille payload to ESP32
+    payload = result.get("braille_payload", "")
+    if payload:
+        send_to_esp32(payload, BRAILLE_URL)
+    else:
+        print("    (No Braille payload to send.)")
 
     print("\nDone.")
 
