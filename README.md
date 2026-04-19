@@ -11,7 +11,7 @@ Set `VISION_BACKEND` in `.env` to switch between:
 |---|---|---|---|
 | `local` (default) | Ollama (llava-phi3) | Tesseract OCR | No |
 | `azure` | Azure AI Vision (tags + objects) | Azure OCR | Yes |
-| `gemini` | Gemini 2.0 Flash | Gemini 2.0 Flash | Yes |
+| `gemini` | Google Gemini Vision | Google Gemini Vision | Yes |
 
 ---
 
