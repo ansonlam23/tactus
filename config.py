@@ -11,3 +11,4 @@ REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", "15"))
 VISION_BACKEND: str = os.getenv("VISION_BACKEND", "azure")  # "azure" or "local"
 OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "moondream")
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
