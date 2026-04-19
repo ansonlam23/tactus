@@ -37,7 +37,7 @@ def describe_image(image_bytes: bytes) -> dict:
 
     payload = {
         "model": OLLAMA_MODEL,
-        "prompt": "Describe this image in 10 words or fewer.",
+        "prompt": "Describe this image in one short sentence. Maximum 10 words. No extra sentences.",
         "images": [b64],
         "stream": False,
     }

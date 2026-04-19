@@ -21,8 +21,10 @@ import requests
 
 CAMERA_URL   = "http://192.168.4.1/"
 BRAILLE_URL  = "http://192.168.4.1/braille"
+READING_URL  = "http://192.168.4.1/reading"
 BACKEND_URL  = "http://127.0.0.1:8000/process-image"
 MODE         = "describe"  # "read" or "describe"
+POLL_INTERVAL = 1  # seconds between button polls
 
 CAPTURED_FRAMES_DIR = Path("captured_frames")
 
@@ -237,14 +239,14 @@ def print_result(result: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    if MODE not in ("read", "describe"):
-        print(f"ERROR: Invalid MODE '{MODE}'. Must be 'read' or 'describe'.")
-        return
+def run_pipeline() -> None:
+    """Capture one frame, process it, and send braille to ESP32."""
+    global _step
+    _step = 0
 
     print()
     print("=" * 50)
-    print("  TACTUS — Camera Bridge")
+    print("  TACTUS — Pipeline triggered by button press")
     print(f"  Camera : {CAMERA_URL}")
     print(f"  Backend: {BACKEND_URL}")
     print(f"  Mode   : {MODE}")
@@ -286,7 +288,42 @@ def main() -> None:
     else:
         print("    (No Braille payload to send.)")
 
-    print("\nDone.")
+    print("\nPipeline complete. Resuming polling...\n")
+
+
+def main() -> None:
+    if MODE not in ("read", "describe"):
+        print(f"ERROR: Invalid MODE '{MODE}'. Must be 'read' or 'describe'.")
+        return
+
+    print()
+    print("=" * 50)
+    print("  TACTUS — Waiting for button press")
+    print(f"  Polling: {READING_URL} every {POLL_INTERVAL}s")
+    print(f"  Mode   : {MODE}")
+    print("=" * 50)
+    print()
+
+    while True:
+        try:
+            response = requests.get(READING_URL, stream=True, timeout=3)
+            value = next(response.iter_content(chunk_size=32), b"0").decode().strip()
+            response.close()
+
+            if value == "1":
+                print("Button pressed! Starting pipeline...")
+                run_pipeline()
+            else:
+                print(f"  Waiting... (button={value})", end="\r")
+
+        except requests.exceptions.Timeout:
+            print("  Warning: /reading timed out, retrying...", end="\r")
+        except requests.exceptions.ConnectionError:
+            print("  Warning: ESP32 unreachable, retrying...", end="\r")
+        except Exception as e:
+            print(f"  Warning: poll error — {e}", end="\r")
+
+        time.sleep(POLL_INTERVAL)
 
 
 if __name__ == "__main__":
