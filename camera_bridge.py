@@ -281,10 +281,16 @@ def run_pipeline() -> None:
         print(f"\nFATAL: Backend upload failed — {e}")
         return
 
-    # Step 8-9: Forward Braille payload to ESP32
+    # Step 8-9: Forward Braille payload to ESP32 (cap at 20 cells for playback)
     payload = result.get("braille_payload", "")
     if payload:
-        send_to_esp32(payload, BRAILLE_URL)
+        cells = payload.split(",")
+        truncated = ",".join(cells[:20])
+        cell_count = len(cells[:20])
+        send_to_esp32(truncated, BRAILLE_URL)
+        wait_time = cell_count * 2.0
+        log(f"Waiting {wait_time:.0f}s for ESP32 to finish playing {cell_count} cells...")
+        time.sleep(wait_time)
     else:
         print("    (No Braille payload to send.)")
 
@@ -306,9 +312,10 @@ def main() -> None:
 
     while True:
         try:
-            response = requests.get(READING_URL, stream=True, timeout=3)
+            response = requests.get(READING_URL, stream=True, timeout=5)
             value = next(response.iter_content(chunk_size=32), b"0").decode().strip()
             response.close()
+            time.sleep(0.5)
 
             if value == "1":
                 print("Button pressed! Starting pipeline...")
