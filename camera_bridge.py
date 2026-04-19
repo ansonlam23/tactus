@@ -171,6 +171,7 @@ def send_to_esp32(payload: str, braille_url: str) -> None:
             timeout=5,
         )
         log(f"ESP32 received it! Response: {response.text.strip()}")
+        print(f"    Visualizer: http://localhost:8000/viz?payload={payload}")
     except requests.exceptions.Timeout:
         print("    Warning: ESP32 did not respond in time (timeout after 5s).")
     except requests.exceptions.ConnectionError:
