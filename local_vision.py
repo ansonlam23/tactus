@@ -71,6 +71,52 @@ def describe_image(image_bytes: bytes) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _check_framing(image: Image.Image) -> Optional[str]:
+    """Return camera guidance string based on Tesseract bounding boxes, or None."""
+    try:
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    except Exception:
+        return None
+
+    img_w = image.size[0]
+    if not img_w:
+        return None
+
+    cutoff_margin = img_w * 0.01
+    center_xs = []
+
+    for i, conf in enumerate(data["conf"]):
+        try:
+            if int(conf) < 30:
+                continue
+        except (ValueError, TypeError):
+            continue
+
+        left  = data["left"][i]
+        width = data["width"][i]
+        right = left + width
+
+        if width == 0:
+            continue
+
+        center_xs.append(left + width / 2)
+
+        if left < cutoff_margin or right > img_w - cutoff_margin:
+            return "Text is cut off — back away or reframe the camera."
+
+        if width > img_w * 0.75:
+            return "Too close — back the camera away."
+
+    if center_xs:
+        ratio = (sum(center_xs) / len(center_xs)) / img_w
+        if ratio < 0.35:
+            return "Text is off to the left — move the camera right."
+        if ratio > 0.65:
+            return "Text is off to the right — move the camera left."
+
+    return None
+
+
 def read_image(image_bytes: bytes) -> dict:
     """
     Extract all text from the image using Tesseract OCR.
@@ -99,5 +145,8 @@ def read_image(image_bytes: bytes) -> dict:
         raise RuntimeError("Tesseract found no text in this image.")
 
     full_text = "\n".join(lines)
+    guidance = _check_framing(image)
+    if guidance:
+        logger.info("Framing guidance: %s", guidance)
     logger.info("Tesseract extracted %d lines", len(lines))
-    return {"text": full_text, "lines": lines, "guidance": None}
+    return {"text": full_text, "lines": lines, "guidance": guidance}

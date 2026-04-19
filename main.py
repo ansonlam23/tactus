@@ -153,7 +153,8 @@ async def process_image(
         else:  # mode == "read"
             result = backend.read_image(image_bytes)
             text = result.get("text", "")
-            braille = translate_to_braille(text)
+            guidance = result.get("guidance")
+            braille = translate_to_braille(guidance if guidance else text)
             return {
                 "success": True,
                 "mode": mode,
@@ -161,7 +162,7 @@ async def process_image(
                 "caption": "",
                 "text": text,
                 "lines": result.get("lines", []),
-                "guidance": result.get("guidance"),
+                "guidance": guidance,
                 "braille_payload": braille["payload"],
                 "braille_debug": braille["debug_log"],
                 "error": None,
