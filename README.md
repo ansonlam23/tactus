@@ -1,19 +1,33 @@
 # Tactus
 
-FastAPI backend for an ESP32-CAM accessibility device.  
-Receives images via HTTP, runs Azure AI Vision, and returns JSON descriptions or OCR text.
+FastAPI backend for an ESP32-CAM accessibility device.
+Captures images via HTTP, runs computer vision, translates output to UEB Grade 2 Braille, and sends the Braille payload to physical motors on the ESP32.
+
+## CV Backends
+
+Set `VISION_BACKEND` in `.env` to switch between:
+
+| Backend | describe | read | Internet required |
+|---|---|---|---|
+| `local` (default) | Ollama (llava-phi3) | Tesseract OCR | No |
+| `azure` | Azure AI Vision (tags + objects) | Azure OCR | Yes |
+| `gemini` | Gemini 2.0 Flash | Gemini 2.0 Flash | Yes |
+
+---
 
 ## Project Structure
 
 ```
-project/
-├── main.py           # FastAPI app and endpoints
-├── azure_vision.py   # Azure AI Vision helper (describe + OCR)
-├── config.py         # Environment variable loading
-├── requirements.txt
-├── .env.example      # Copy to .env and fill in your credentials
-├── README.md
-└── uploads/          # Debug copies of received images (auto-created)
+tactus/
+├── main.py               # FastAPI app and endpoints
+├── azure_vision.py       # Azure AI Vision backend
+├── local_vision.py       # Local backend (Ollama + Tesseract)
+├── gemini_vision.py      # Gemini API backend (requires API key)
+├── braille_translator.py # UEB Grade 2 Braille translator
+├── camera_bridge.py      # Polls ESP32 button, runs pipeline, sends Braille
+├── config.py             # Environment variable loading
+├── .env.example          # Copy to .env and fill in credentials
+└── uploads/              # Debug copies of received images (auto-created)
 ```
 
 ---
@@ -21,21 +35,15 @@ project/
 ## 1. Install Dependencies
 
 ```bash
-cd project
 python -m venv venv
-
-# macOS / Linux
-source venv/bin/activate
-
-# Windows
-venv\Scripts\activate
-
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+brew install tesseract    # macOS — required for local OCR
 ```
 
 ---
 
-## 2. Configure Azure Credentials
+## 2. Configure Environment
 
 ```bash
 cp .env.example .env
@@ -44,121 +52,85 @@ cp .env.example .env
 Edit `.env`:
 
 ```
-VISION_ENDPOINT=https://your-resource-name.cognitiveservices.azure.com
-VISION_KEY=your_32_character_key_here
-```
+VISION_BACKEND=local        # or azure or gemini
 
-> **No Azure account?** Leave `.env.example` as-is (or don't create `.env`).  
-> The server automatically falls back to **mock output** so you can test without credentials.
+# Azure (only needed if VISION_BACKEND=azure)
+VISION_ENDPOINT=https://your-resource.cognitiveservices.azure.com
+VISION_KEY=your_key_here
+
+# Gemini (only needed if VISION_BACKEND=gemini)
+GEMINI_API_KEY=your_gemini_key_here
+
+# Local Ollama (only needed if VISION_BACKEND=local)
+OLLAMA_MODEL=llava-phi3
+```
 
 ---
 
-## 3. Run the Server
+## 3. Run
 
+**Terminal 1 — Ollama (local backend only):**
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+ollama serve
 ```
 
-Visit `http://localhost:8000` to confirm it's running. You should see:
-
-```json
-{ "status": "ok", "service": "Accessibility Vision API", "mock_mode": true }
+**Terminal 2 — FastAPI server:**
+```bash
+uvicorn main:app --reload
 ```
+
+**Terminal 3 — Camera bridge (connects to ESP32):**
+```bash
+python camera_bridge.py
+```
+
+The camera bridge polls the ESP32's `/reading` endpoint every second. When the button is pressed, it captures a frame, processes it, translates to Braille, and POSTs the payload to the ESP32's `/braille` endpoint.
 
 ---
 
 ## 4. Test with curl
 
-### Describe mode (scene description)
-
+### Describe mode
 ```bash
-curl -X POST http://localhost:8000/process-image \
-  -F "imageFile=@/path/to/photo.jpg" \
-  -F "mode=describe"
+curl -s -X POST http://localhost:8000/process-image \
+  -F "imageFile=@test_images/dog_test.jpg" \
+  -F "mode=describe" | python3 -m json.tool
 ```
 
-**Sample response:**
-
-```json
-{
-  "success": true,
-  "mode": "describe",
-  "filename": "20241201_143022_a1b2c3_photo.jpg",
-  "caption": "a bag of potato chips on a wooden table",
-  "text": "a bag of potato chips on a wooden table",
-  "lines": [],
-  "error": null
-}
-```
-
----
-
-### Read mode (OCR / text extraction)
-
+### Read mode (OCR)
 ```bash
-curl -X POST http://localhost:8000/process-image \
-  -F "imageFile=@/path/to/menu.jpg" \
-  -F "mode=read"
-```
-
-**Sample response:**
-
-```json
-{
-  "success": true,
-  "mode": "read",
-  "filename": "20241201_143055_d4e5f6_menu.jpg",
-  "caption": "",
-  "text": "LAYS Classic Potato Chips\nNET WT 8 OZ (226g)\nCalories 160",
-  "lines": [
-    "LAYS Classic Potato Chips",
-    "NET WT 8 OZ (226g)",
-    "Calories 160"
-  ],
-  "error": null
-}
+curl -s -X POST http://localhost:8000/process-image \
+  -F "imageFile=@test_images/test_text_image.jpg" \
+  -F "mode=read" | python3 -m json.tool
 ```
 
 ---
 
-## 5. Interactive API Docs
+## 5. Braille Translation
 
-FastAPI includes built-in docs you can use in a browser:
+All text output is translated to UEB Grade 2 Braille. The response includes:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- `braille_payload` — comma-separated 6-bit cells sent to the ESP32 motors
+- `braille_debug` — human-readable mapping of each character to its cell
+
+Bit mapping per cell:
+```
+Index 0 = Dot 1 (Top Left)      Index 3 = Dot 4 (Top Right)
+Index 1 = Dot 2 (Middle Left)   Index 4 = Dot 5 (Middle Right)
+Index 2 = Dot 3 (Bottom Left)   Index 5 = Dot 6 (Bottom Right)
+```
+
+Example: `c` = dots 1,4 = `100100`
 
 ---
 
-## 6. Swapping Mock Output for Real Azure Output
+## 6. ESP32 Endpoints
 
-All CV logic lives in `azure_vision.py`.
-
-| Function | What it calls | Mock fallback |
+| Endpoint | Method | Description |
 |---|---|---|
-| `describe_image(bytes)` | Azure caption API | `_mock_describe()` |
-| `read_image(bytes)` | Azure OCR/read API | `_mock_read()` |
-
-When `VISION_ENDPOINT` and `VISION_KEY` are present in `.env`, the server automatically uses real Azure calls. If either is missing, it silently uses the mock functions at the bottom of `azure_vision.py`.
-
-To customize mock output for demos, edit `_mock_describe()` and `_mock_read()` in `azure_vision.py`.
-
----
-
-## 7. ESP32-CAM Integration
-
-Your ESP32-CAM should POST to:
-
-```
-POST http://<your-laptop-ip>:8000/process-image
-Content-Type: multipart/form-data
-```
-
-Form fields:
-- `imageFile` — the JPEG image data
-- `mode` — `describe` or `read`
-
-Make sure your laptop firewall allows port 8000, and both devices are on the same network.
+| `/` | GET | MJPEG stream |
+| `/reading` | GET | Returns button state (`0` or `1`) |
+| `/braille` | POST | Receives Braille payload, drives motors |
 
 ---
 
@@ -166,7 +138,8 @@ Make sure your laptop firewall allows port 8000, and both devices are on the sam
 
 | Symptom | Fix |
 |---|---|
-| `mock_mode: true` but you have credentials | Check that `.env` exists (not just `.env.example`) and `VISION_ENDPOINT`/`VISION_KEY` are set |
-| `504 Timeout` | Increase `REQUEST_TIMEOUT` in `.env` or check Azure resource region |
-| `400 Invalid mode` | ESP32-CAM must send `mode=describe` or `mode=read` exactly |
-| Port already in use | Change `--port 8000` to another port like `8001` |
+| Ollama timeout | Increase `REQUEST_TIMEOUT` in `.env` (default 60s) |
+| Tesseract not found | Run `brew install tesseract` |
+| `504 Timeout` (Azure) | Check Azure resource region or increase `REQUEST_TIMEOUT` |
+| ESP32 unreachable | Connect laptop to ESP32 hotspot first |
+| `/reading` keeps timing out | ESP32 is busy playing motors — it will recover automatically |
