@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tactus — Braille Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d0f;
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  h1 {
+    font-size: 1.1rem;
+    letter-spacing: 0.15em;
+    color: #888;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  #subtitle {
+    font-size: 0.75rem;
+    color: #444;
+    margin-bottom: 40px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Input area */
+  #input-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 40px;
+  }
+
+  textarea {
+    width: 100%;
+    background: #1a1a1e;
+    border: 1px solid #2a2a2e;
+    border-radius: 8px;
+    color: #c0f0c0;
+    font-family: inherit;
+    font-size: 0.8rem;
+    padding: 12px;
+    resize: vertical;
+    min-height: 70px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  textarea:focus { border-color: #444; }
+
+  .btn-row { display: flex; gap: 10px; }
+
+  button {
+    background: #1a1a1e;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #ccc;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    padding: 8px 20px;
+    text-transform: uppercase;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  button:hover { background: #252528; border-color: #555; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  button#play-btn  { border-color: #2a5a2a; color: #6ddb6d; }
+  button#play-btn:hover  { background: #1a2e1a; }
+  button#replay-btn { border-color: #2a3a5a; color: #6da8db; }
+  button#replay-btn:hover { background: #1a2030; }
+
+  /* Stage */
+  #stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    width: 100%;
+  }
+
+  /* Cell strip */
+  #cell-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    max-width: 800px;
+  }
+
+  .cell-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.15;
+    transition: opacity 0.3s;
+  }
+
+  .cell-wrapper.active  { opacity: 1; }
+  .cell-wrapper.visited { opacity: 0.45; }
+
+  /* Braille dot grid */
+  .braille-cell {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 6px;
+    background: #16161a;
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 10px;
+    width: 56px;
+    height: 76px;
+  }
+
+  .cell-wrapper.active .braille-cell {
+    border-color: #2a4a2a;
+    box-shadow: 0 0 12px rgba(80, 200, 80, 0.08);
+  }
+
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #2a2a2e;
+    transition: background 0.25s, box-shadow 0.25s;
+  }
+
+  .dot.on {
+    background: #5de05d;
+    box-shadow: 0 0 8px rgba(93, 224, 93, 0.7);
+  }
+
+  .cell-wrapper.visited .dot.on {
+    background: #2d6e2d;
+    box-shadow: none;
+  }
+
+  .cell-bits {
+    font-size: 0.6rem;
+    color: #444;
+    letter-spacing: 0.05em;
+  }
+
+  .cell-wrapper.active  .cell-bits { color: #5de05d; }
+  .cell-wrapper.visited .cell-bits { color: #336633; }
+
+  /* Progress bar */
+  #progress-bar-wrap {
+    width: 100%;
+    max-width: 500px;
+    height: 2px;
+    background: #1a1a1e;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  #progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #5de05d;
+    transition: width 0.3s;
+  }
+
+  #status {
+    font-size: 0.72rem;
+    color: #555;
+    letter-spacing: 0.05em;
+    height: 18px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Tactus — Braille Visualizer</h1>
+<p id="subtitle">UEB dot playback</p>
+
+<section id="input-section">
+  <textarea id="payload-input" placeholder="Paste braille payload here e.g. 100100,111010,101001,101100"></textarea>
+  <div class="btn-row">
+    <button id="play-btn"   onclick="startPlayback()">&#9654; Play</button>
+    <button id="replay-btn" onclick="replayPlayback()" disabled>&#8635; Replay</button>
+  </div>
+</section>
+
+<section id="stage">
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+  <p id="status"></p>
+  <div id="cell-strip"></div>
+</section>
+
+<script>
+  // Dot order: index 0-5 maps to dots 1-6 in reading order (col-major, left col first)
+  // Grid positions (row, col): dot1=(0,0) dot2=(1,0) dot3=(2,0) dot4=(0,1) dot5=(1,1) dot6=(2,1)
+  // grid-template fills row by row, so we reorder to: d1,d4,d2,d5,d3,d6
+  const GRID_ORDER = [0, 3, 1, 4, 2, 5]; // indices into the 6-bit string
+
+  const CELL_DURATION = 600;  // ms each cell is "active"
+  const CELL_PAUSE    = 200;  // ms gap between cells
+
+  let playbackTimer = null;
+
+  function parseCells(raw) {
+    return raw.trim().split(',').map(s => s.trim()).filter(s => /^[01]{6}$/.test(s));
+  }
+
+  function buildCellDOM(bits, index) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cell-wrapper';
+    wrapper.id = `cell-${index}`;
+
+    const grid = document.createElement('div');
+    grid.className = 'braille-cell';
+
+    GRID_ORDER.forEach(i => {
+      const dot = document.createElement('div');
+      dot.className = 'dot' + (bits[i] === '1' ? ' on' : '');
+      grid.appendChild(dot);
+    });
+
+    const label = document.createElement('div');
+    label.className = 'cell-bits';
+    label.textContent = bits;
+
+    wrapper.appendChild(grid);
+    wrapper.appendChild(label);
+    return wrapper;
+  }
+
+  function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+  }
+
+  function setProgress(current, total) {
+    document.getElementById('progress-bar').style.width =
+      total > 0 ? `${(current / total) * 100}%` : '0%';
+  }
+
+  function startPlayback() {
+    if (playbackTimer) clearTimeout(playbackTimer);
+
+    const raw   = document.getElementById('payload-input').value;
+    const cells = parseCells(raw);
+
+    if (cells.length === 0) {
+      setStatus('No valid 6-bit cells found.');
+      return;
+    }
+
+    // Build DOM
+    const strip = document.getElementById('cell-strip');
+    strip.innerHTML = '';
+    cells.forEach((bits, i) => strip.appendChild(buildCellDOM(bits, i)));
+
+    setProgress(0, cells.length);
+    setStatus(`0 / ${cells.length} cells`);
+    document.getElementById('play-btn').disabled   = true;
+    document.getElementById('replay-btn').disabled = true;
+
+    animate(cells, 0);
+  }
+
+  function animate(cells, index) {
+    if (index >= cells.length) {
+      setStatus('Done.');
+      document.getElementById('play-btn').disabled   = false;
+      document.getElementById('replay-btn').disabled = false;
+      setProgress(cells.length, cells.length);
+      return;
+    }
+
+    // Mark previous as visited
+    if (index > 0) {
+      const prev = document.getElementById(`cell-${index - 1}`);
+      if (prev) { prev.classList.remove('active'); prev.classList.add('visited'); }
+    }
+
+    const current = document.getElementById(`cell-${index}`);
+    if (current) current.classList.add('active');
+
+    setProgress(index + 1, cells.length);
+    setStatus(`Cell ${index + 1} / ${cells.length}  —  ${cells[index]}`);
+
+    playbackTimer = setTimeout(() => animate(cells, index + 1), CELL_DURATION + CELL_PAUSE);
+  }
+
+  function replayPlayback() {
+    startPlayback();
+  }
+
+  // Auto-load from URL param ?payload=...
+  window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get('payload');
+    if (p) {
+      document.getElementById('payload-input').value = p;
+      startPlayback();
+    }
+  });
+</script>
+</body>
+</html>

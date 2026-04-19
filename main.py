@@ -12,7 +12,8 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 import azure_vision
 import local_vision
@@ -49,6 +50,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/viz")
+async def visualizer():
+    return FileResponse("static/braille_viz.html")
 
 # ---------------------------------------------------------------------------
 # Endpoints
